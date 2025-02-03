@@ -1,7 +1,7 @@
 #include <ctype.h>    // iscntrl()
 #include <stdio.h>    // printf()
 #include <stdlib.h>   // atexit()
-#include <termios.h>  // struct termios, tcgetattr(), tcsetattr(), ECHO, TCSAFLUSH, ICANON
+#include <termios.h>  // struct termios, tcgetattr(), tcsetattr(), ECHO, TCSAFLUSH, ICANON, ISIG, IXON, IEXTEN, ICRNL
 #include <unistd.h>   // read(), STDIN_FILENO
 
 struct termios orig_termios;
@@ -11,11 +11,12 @@ void disableRawMode() {
 }
  
 void enableRawMode() {
-  tcgetattr(STDIN_FILENO, &orig_termios);   // Read current terminal attributes into a struct
-  atexit(disableRawMode);                   // Calls disableModeRaw on program exit
+  tcgetattr(STDIN_FILENO, &orig_termios);           // Read current terminal attributes into a struct
+  atexit(disableRawMode);                           // Calls disableModeRaw on program exit
   struct termios raw = orig_termios;
-  raw.c_lflag &= ~(ECHO | ICANON);          // Modify the struct, Turn off canonical mode
-  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // Pass the modified struct to write the new terminal attributes back out
+  raw.c_iflag &= ~(ICRNL | IXON);                   // Fixes ctrl-m, Disables ctrl-s and ctrl-q
+  raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);  // Modify the struct, Turn off canonical mode, disables ctrl-v, disables ctrl-c and ctrl-z
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);         // Pass the modified struct to write the new terminal attributes back out
 }
 
 int main() {
