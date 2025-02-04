@@ -2,7 +2,7 @@
 
 #include <ctype.h>      // iscntrl()
 #include <errno.h>      // EAGAIN, errno
-#include <stdio.h>      // printf(), perror(), sscanf()
+#include <stdio.h>      // printf(), perror(), sscanf(), snprintf()
 #include <stdlib.h>     // atexit(), exit(), realloc(), free()
 #include <string.h>     // memcpy()
 #include <sys/ioctl.h>  // struct winsize, ioctl(), TIOCGWINSZ
@@ -13,6 +13,8 @@
 #include <unistd.h>     // read(), STDIN_FILENO, write(), STDOUT_FILENO
 
 /* DEFINES */
+
+#define KILO_VERSION "0.0.1"
 
 #define CTRL_KEY(k) ((k) & 0x1f) // Bitwise-ANDs the character with 00011111, in ASCII the control keys are 0-31
 
@@ -125,8 +127,23 @@ void abFree(struct abuf *ab) {
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
-    abAppend(ab, "~", 1);
+    if (y == E.screenrows / 3) {
+      char welcome[80];
+      int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo editor -- version %s", KILO_VERSION);
+      if (welcomelen > E.screencols) welcomelen = E.screencols;
 
+      // --- Center the welcome message
+      int padding = (E.screencols - welcomelen) / 2; // Divide screen width by 2 and subtract half of the length of the welcome message
+      if (padding) {
+        abAppend(ab, "~", 1);
+        padding--;
+      }
+      while (padding--) abAppend(ab, " ", 1);
+      // --- End of centering
+      abAppend(ab, welcome, welcomelen);
+    } else {
+      abAppend(ab, "~", 1);
+    }
     abAppend(ab, "\x1b[K", 3); // Erase one line at a time
     if(y < E.screenrows - 1) {
       abAppend(ab, "\r\n", 2);
