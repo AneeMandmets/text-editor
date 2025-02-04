@@ -8,7 +8,7 @@
                         struct termios, tcgetattr(), tcsetattr(), ECHO, TCSAFLUSH, ICANON, ISIG, IXON, IEXTEN, 
                         ICRNL, OPOST, RKINT, INPCK, ISTRIP, CS8, VMIN, VTIME
                       */ 
-#include <unistd.h>   // read(), STDIN_FILENO
+#include <unistd.h>   // read(), STDIN_FILENO, write(), STDOUT_FILENO
 
 /* DEFINES */
 
@@ -21,6 +21,10 @@ struct termios orig_termios;
 /* TERMINAL */
 
 void unalive(const char *s) {
+  // Clear the screen on exit
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+  write(STDOUT_FILENO, "\x1b[H", 3);
+  // Error message
   perror(s);
   exit(1);
 }
@@ -41,7 +45,6 @@ void enableRawMode() {
   raw.c_cc[VMIN] = 0;                                                         // Sets minimum number of bytes needed before read() can return, 0 means it returns as soon as there is any input to be read
   raw.c_cc[VTIME] = 1;                                                        // Sets maximum amount of time to wait before read() returns, 1/10 of a second
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) unalive("tcsetattr");   // Pass the modified struct to write the new terminal attributes back out
-  printf("Raw mode enabled\n"); // Debugging output
 }
 
 // Wait for one keypress and return it
@@ -51,8 +54,23 @@ char editorReadKey() {
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) unalive("read");
   }
-  printf("Read key: %d\n", c); // Debugging output
   return c;
+}
+
+/* OUTPUT */
+
+void editorDrawRows() {
+  int y;
+  for (y = 0; y < 24; y++) {
+    write(STDOUT_FILENO, "~\r\n", 3);
+  }
+}
+
+void editorRefreshScreen() {
+  write(STDOUT_FILENO, "\x1b[2J", 4); // Clear the screen, 4 is the amount of bytes we will be writing on the screen, \x1b is the escape character 
+  write(STDOUT_FILENO, "\x1b[H", 3);  // Reposition the cursor at the top left of the screen, H is the cursor position command
+  editorDrawRows();
+  write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
 /* INPUT */
@@ -62,11 +80,13 @@ void editorProcessKeypress() {
   char c = editorReadKey();
   switch (c) {
     case CTRL_KEY('q'):
-    printf("Exiting program\n");
+      // Clear the screen
+      write(STDOUT_FILENO, "\x1b[2J", 4);
+      write(STDOUT_FILENO, "\x1b[H", 3);
+      // Exit program  
       exit(0);
       break;
     default:
-      printf("Key pressed: %d\n", c);
       break;
   }
 }
@@ -74,8 +94,8 @@ void editorProcessKeypress() {
 /* INIT */
 
 int main() {
+  editorRefreshScreen();
   enableRawMode();
-  printf("Entering input loop\n"); // Debugging output
 
   while (1) {
     editorProcessKeypress();
