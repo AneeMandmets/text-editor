@@ -3,9 +3,10 @@
 #include <ctype.h>      // iscntrl()
 #include <errno.h>      // EAGAIN, errno
 #include <stdio.h>      // printf(), perror(), sscanf(), snprintf()
-#include <stdlib.h>     // atexit(), exit(), realloc(), free()
+#include <stdlib.h>     // atexit(), exit(), realloc(), free(), malloc(),
 #include <string.h>     // memcpy(), strlen()
 #include <sys/ioctl.h>  // struct winsize, ioctl(), TIOCGWINSZ
+#include <sys/types.h>  // ssize_t
 #include <termios.h>    /* 
                           struct termios, tcgetattr(), tcsetattr(), ECHO, TCSAFLUSH, ICANON, ISIG, IXON, IEXTEN, 
                           ICRNL, OPOST, RKINT, INPCK, ISTRIP, CS8, VMIN, VTIME
@@ -32,10 +33,17 @@ enum editorKey {
 
 /* DATA */
 
+typedef struct erow { // Editor row, stores a line of text as a pointer to the dynamically allocated character data and the length of the line
+  int size;
+  char *chars;
+} erow;
+
 struct editorConfig {
   int cx, cy;                     // Cursor x and y position
   int screenrows;
   int screencols;
+  int numrows;
+  erow row;
   struct termios orig_termios;
 };
 
@@ -153,6 +161,19 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
+/* FILE I/O */
+
+void editorOpen() {
+  char *line = "Hello, world!";
+  ssize_t linelen = 13;
+
+  E.row.size = linelen;
+  E.row.chars = malloc(linelen + 1);
+  memcpy(E.row.chars, line, linelen);
+  E.row.chars[linelen] = '\0';
+  E.numrows = 1;  // The erow now contains a line of text
+}
+
 /* APPEND BUFFER */
 // We create our own dynamic string type that supports appending
 
@@ -181,22 +202,28 @@ void abFree(struct abuf *ab) {
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
-    if (y == E.screenrows / 3) {
-      char welcome[80];
-      int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo editor -- version %s", KILO_VERSION);
-      if (welcomelen > E.screencols) welcomelen = E.screencols;
+    if (y >= E.numrows) { // Is the row we are drawing part of the text buffer or does it come after it?
+      if (y == E.screenrows / 3) {
+        char welcome[80];
+        int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo editor -- version %s", KILO_VERSION);
+        if (welcomelen > E.screencols) welcomelen = E.screencols;
 
-      // --- Center the welcome message
-      int padding = (E.screencols - welcomelen) / 2; // Divide screen width by 2 and subtract half of the length of the welcome message
-      if (padding) {
+        // --- Center the welcome message
+        int padding = (E.screencols - welcomelen) / 2; // Divide screen width by 2 and subtract half of the length of the welcome message
+        if (padding) {
+          abAppend(ab, "~", 1);
+          padding--;
+        }
+        while (padding--) abAppend(ab, " ", 1);
+        // --- End of centering
+        abAppend(ab, welcome, welcomelen);
+      } else {
         abAppend(ab, "~", 1);
-        padding--;
       }
-      while (padding--) abAppend(ab, " ", 1);
-      // --- End of centering
-      abAppend(ab, welcome, welcomelen);
     } else {
-      abAppend(ab, "~", 1);
+      int len = E.row.size;
+      if (len > E.screencols) len = E.screencols;
+      abAppend(ab, E.row.chars, len);
     }
     abAppend(ab, "\x1b[K", 3); // Erase one line at a time
     if(y < E.screenrows - 1) {
@@ -289,12 +316,14 @@ void editorProcessKeypress() {
 void initEditor() {
   E.cx = 0;
   E.cy = 0;
+  E.numrows = 0;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) unalive("getWindowSize");
 }
 
 int main() {
   enableRawMode();
   initEditor();
+  editorOpen();
 
   while (1) {
     editorRefreshScreen();
