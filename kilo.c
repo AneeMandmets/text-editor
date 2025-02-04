@@ -1,3 +1,5 @@
+/* INCLUDES */
+
 #include <ctype.h>    // iscntrl()
 #include <errno.h>    // EAGAIN, errno
 #include <stdio.h>    // printf(), perror()
@@ -8,7 +10,11 @@
                       */ 
 #include <unistd.h>   // read(), STDIN_FILENO
 
+/* DATA */
+
 struct termios orig_termios;
+
+/* TERMINAL */
 
 void unalive(const char *s) {
   perror(s);
@@ -31,6 +37,8 @@ void enableRawMode() {
   raw.c_cc[VTIME] = 1;                                      // Sets maximum amount of time to wait before read() returns, 1/10 of a second
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) unalive("tcsetattr");                 // Pass the modified struct to write the new terminal attributes back out
 }
+
+/* INIT */
 
 int main() {
   enableRawMode();
