@@ -39,7 +39,7 @@ enum editorKey {
 
 /* DATA */
 
-typedef struct erow { // Editor row, stores a line of text as a pointer to the dynamically allocated character data and the length of the line
+typedef struct erow {  // Editor row, stores a line of text as a pointer to the dynamically allocated character data and the length of the line
   int size;
   char *chars;
 } erow;
@@ -233,6 +233,12 @@ void editorScroll() {
   if (E.cy >= E.rowoff + E.screenrows) {    // Has the cursor moved down outside of the visible window?
     E.rowoff = E.cy - E.screenrows + 1;
   }
+  if (E.cx < E.coloff) {
+    E.coloff = E.cx;
+  }
+  if (E.cx >= E.coloff + E.screencols) {
+    E.coloff = E.cx - E.screencols + 1;
+  }
 }
 
 void editorDrawRows(struct abuf *ab) {
@@ -258,9 +264,10 @@ void editorDrawRows(struct abuf *ab) {
         abAppend(ab, "~", 1);
       }
     } else {
-      int len = E.row[filerow].size;
+      int len = E.row[filerow].size - E.coloff;
+      if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
-      abAppend(ab, E.row[filerow].chars, len);
+      abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     }
     abAppend(ab, "\x1b[K", 3); // Erase one line at a time
     if(y < E.screenrows - 1) {
@@ -279,7 +286,7 @@ void editorRefreshScreen() {
 
   // Moving the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1); // Move the cursor to the current position
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1); // Move the cursor to the current position
   abAppend(&ab, buf, strlen(buf));
 
   abAppend(&ab, "\x1b[?25h", 6);  // Show the cursor
@@ -291,15 +298,22 @@ void editorRefreshScreen() {
 
 // Allows the user move the cursor using the wasd keys
 void editorMoveCursor(int key) {
+  erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy]; // Is the cursor on an actual row?
   switch (key) {
     case ARROW_LEFT:
       if (E.cx != 0) { // If the cursor is not at the left edge of the screen
         E.cx--;
+      } else if (E.cy > 0) {
+        E.cy--;
+        E.cx = E.row[E.cy].size;
       }
       break;
     case ARROW_RIGHT:
-      if (E.cx != E.screencols - 1) { // If the cursor is not at the right edge of the screen
+      if (row && E.cx < row->size) {
         E.cx++;
+      } else if (row && E.cx == row->size) {
+        E.cy++;
+        E.cx = 0;
       }
       break;
     case ARROW_UP:
@@ -312,6 +326,13 @@ void editorMoveCursor(int key) {
         E.cy++;
       }
       break;
+  }
+
+  // If the cursor ends up right to the actual row, move it back into bounds
+  row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+  int rowlen = row ? row->size : 0;
+  if (E.cx > rowlen) {
+    E.cx = rowlen;
   }
 }
 
