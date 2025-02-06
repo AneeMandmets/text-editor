@@ -10,7 +10,7 @@
 #include <errno.h>      // EAGAIN, errno
 #include <stdio.h>      // printf(), perror(), sscanf(), snprintf(), FILE, fopen(), getline(), fclose()
 #include <stdlib.h>     // atexit(), exit(), realloc(), free(), malloc(),
-#include <string.h>     // memcpy(), strlen()
+#include <string.h>     // memcpy(), strlen(), strdup()
 #include <sys/ioctl.h>  // struct winsize, ioctl(), TIOCGWINSZ
 #include <sys/types.h>  // ssize_t
 #include <termios.h>    /* 
@@ -56,6 +56,7 @@ struct editorConfig {
   int screencols;
   int numrows;
   erow *row;
+  char *filename;
   struct termios orig_termios;
 };
 
@@ -227,6 +228,8 @@ void editorAppendRow(char *s, size_t len) {
 /* FILE I/O */
 
 void editorOpen(char *filename) {
+  free(E.filename);
+  E.filename = strdup(filename);      // Duplicate the string and store it in the editorConfig struct
   FILE *fp = fopen(filename, "r");    // Open the file in read mode
   if (!fp) unalive("fopen");          // If the file pointer is NULL, print an error message and exit  
   
@@ -317,10 +320,28 @@ void editorDrawRows(struct abuf *ab) {
       abAppend(ab, &E.row[filerow].render[E.coloff], len);
     }
     abAppend(ab, "\x1b[K", 3); // Erase one line at a time
-    if(y < E.screenrows - 1) {
-      abAppend(ab, "\r\n", 2);
-    }
+    abAppend(ab, "\r\n", 2);
   }
+}
+
+void editorDrawStatusBar(struct abuf *ab) {
+  abAppend(ab, "\x1b[7m", 4) ; // Invert the colors
+  char status[80], rstatus[80];
+  int len = snprintf(status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No Name]", E.numrows);
+  int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.cy + 1, E.numrows);
+  if (len > E.screencols) len = E.screencols;
+  abAppend(ab, status, len);
+  while (len < E.screencols) {
+    if (E.screencols - len == rlen) {
+      abAppend(ab, rstatus, rlen);
+      break;
+    } else {
+      abAppend(ab, " ", 1);
+      len++;
+    }
+
+  }
+  abAppend(ab, "\x1b[m", 3);   // Reset the colors
 }
 
 void editorRefreshScreen() {
@@ -330,6 +351,7 @@ void editorRefreshScreen() {
 
   abAppend(&ab, "\x1b[H", 3);     // Reposition the cursor at the top left of the screen, H is the cursor position command
   editorDrawRows(&ab);
+  editorDrawStatusBar(&ab);
 
   // Moving the cursor
   char buf[32];
@@ -436,7 +458,9 @@ void initEditor() {
   E.coloff = 0;
   E.numrows = 0;
   E.row = NULL;
+  E.filename = NULL;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) unalive("getWindowSize");
+  E.screenrows -= 1;                                                                // Make space for the status bar
 }
 
 int main(int argc, char *argv[]) {
