@@ -11,7 +11,7 @@
 #include <stdio.h>      // printf(), perror(), sscanf(), snprintf(), FILE, fopen(), getline(), fclose(). vsnprintf()
 #include <stdarg.h>     // va_list, va_start(), va_end()
 #include <stdlib.h>     // atexit(), exit(), realloc(), free(), malloc(),
-#include <string.h>     // memcpy(), strlen(), strdup()
+#include <string.h>     // memcpy(), strlen(), strdup(), memmove()
 #include <sys/ioctl.h>  // struct winsize, ioctl(), TIOCGWINSZ
 #include <sys/types.h>  // ssize_t
 #include <termios.h>    /* 
@@ -227,6 +227,25 @@ void editorAppendRow(char *s, size_t len) {
   editorUpdateRow(&E.row[at]);
 
   E.numrows++;
+}
+
+void editorRowInsertChar(erow *row, int at, int c) {
+  if (at < 0 || at > row->size) at = row->size;
+  row->chars = realloc(row->chars, row->size + 2);
+  memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
+  row->size++;
+  row->chars[at] = c;
+  editorUpdateRow(row);
+}
+
+/* EDITOR OPERATIONS */
+
+void editorInsertChar(int c) {
+  if (E.cy == E.numrows) {
+    editorAppendRow("", 0);
+  }
+  editorRowInsertChar(&E.row[E.cy], E.cx, c);
+  E.cx++;
 }
 
 /* FILE I/O */
@@ -465,6 +484,10 @@ void editorProcessKeypress() {
     case ARROW_LEFT:
     case ARROW_RIGHT:
       editorMoveCursor(c);
+      break;
+    
+    default:
+      editorInsertChar(c);
       break;
   }
 }
