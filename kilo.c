@@ -23,6 +23,7 @@
 
 #define KILO_VERSION "0.0.1"
 #define KILO_TAB_STOP 8
+#define KILO_QUIT_TIMES 3
 
 #define CTRL_KEY(k) ((k) & 0x1f) // Bitwise-ANDs the character with 00011111, in ASCII the control keys are 0-31
 
@@ -496,6 +497,7 @@ void editorMoveCursor(int key) {
 
 // Waits for a keypress and processes it
 void editorProcessKeypress() {
+  static int quit_times = KILO_QUIT_TIMES;
   int c = editorReadKey();
   switch (c) {
     case '\r': // Enter key
@@ -503,6 +505,11 @@ void editorProcessKeypress() {
       break;
 
     case CTRL_KEY('q'):
+      if (E.dirty && quit_times > 0) {
+        editorSetStatusMessage("WARNING!!! File has unsaved changes. Press Ctrl-Q %d more times to quit.", quit_times);
+        quit_times--;
+        return;
+      }
       // Clear the screen
       write(STDOUT_FILENO, "\x1b[2J", 4);
       write(STDOUT_FILENO, "\x1b[H", 3);
@@ -557,6 +564,7 @@ void editorProcessKeypress() {
       editorInsertChar(c);
       break;
   }
+  quit_times = KILO_QUIT_TIMES;
 }
 
 /* INIT */
