@@ -8,7 +8,8 @@
 
 #include <ctype.h>      // iscntrl()
 #include <errno.h>      // EAGAIN, errno
-#include <stdio.h>      // printf(), perror(), sscanf(), snprintf(), FILE, fopen(), getline(), fclose()
+#include <stdio.h>      // printf(), perror(), sscanf(), snprintf(), FILE, fopen(), getline(), fclose(). vsnprintf()
+#include <stdarg.h>     // va_list, va_start(), va_end()
 #include <stdlib.h>     // atexit(), exit(), realloc(), free(), malloc(),
 #include <string.h>     // memcpy(), strlen(), strdup()
 #include <sys/ioctl.h>  // struct winsize, ioctl(), TIOCGWINSZ
@@ -17,6 +18,7 @@
                           struct termios, tcgetattr(), tcsetattr(), ECHO, TCSAFLUSH, ICANON, ISIG, IXON, IEXTEN, 
                           ICRNL, OPOST, RKINT, INPCK, ISTRIP, CS8, VMIN, VTIME
                         */ 
+#include <time.h>       // time_t, time(), struct tm, localtime(), tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year, tm_wday, tm_yday, tm_isdst                       
 #include <unistd.h>     // read(), STDIN_FILENO, write(), STDOUT_FILENO
 
 /* DEFINES */
@@ -57,6 +59,8 @@ struct editorConfig {
   int numrows;
   erow *row;
   char *filename;
+  char statusmsg[80];
+  time_t statusmsg_time;
   struct termios orig_termios;
 };
 
@@ -341,7 +345,15 @@ void editorDrawStatusBar(struct abuf *ab) {
     }
 
   }
-  abAppend(ab, "\x1b[m", 3);   // Reset the colors
+  abAppend(ab, "\x1b[m", 3);   // Reset the colors  
+  abAppend(ab, "\r\n", 2);
+}
+
+void editorDrawMessageBar(struct abuf *ab) {
+  abAppend(ab, "\x1b[K", 3);      // Clear message bar
+  int messageLen = strlen(E.statusmsg);
+  if (messageLen > E.screencols) messageLen = E.screencols;
+  if (messageLen && time(NULL) - E.statusmsg_time < 5) abAppend(ab, E.statusmsg, messageLen);
 }
 
 void editorRefreshScreen() {
@@ -352,6 +364,7 @@ void editorRefreshScreen() {
   abAppend(&ab, "\x1b[H", 3);     // Reposition the cursor at the top left of the screen, H is the cursor position command
   editorDrawRows(&ab);
   editorDrawStatusBar(&ab);
+  editorDrawMessageBar(&ab);
 
   // Moving the cursor
   char buf[32];
@@ -361,6 +374,14 @@ void editorRefreshScreen() {
   abAppend(&ab, "\x1b[?25h", 6);  // Show the cursor
   write(STDOUT_FILENO, ab.b, ab.len);
   abFree(&ab);
+}
+
+void editorSetStatusMessage(const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);  // Helps make a printf()-style function that takes a variable number of arguments
+  va_end(ap);
+  E.statusmsg_time = time(NULL);                         // Set the time the message was set, current time
 }
 
 /* INPUT */
@@ -459,8 +480,10 @@ void initEditor() {
   E.numrows = 0;
   E.row = NULL;
   E.filename = NULL;
+  E.statusmsg[0] = '\0';
+  E.statusmsg_time = 0;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) unalive("getWindowSize");
-  E.screenrows -= 1;                                                                // Make space for the status bar
+  E.screenrows -= 2;                                                                // Make space for the status bar
 }
 
 int main(int argc, char *argv[]) {
@@ -469,6 +492,8 @@ int main(int argc, char *argv[]) {
   if (argc >= 2) {
     editorOpen(argv[1]);
   }
+
+  editorSetStatusMessage("HELP: Ctrl-Q = quit");
 
   while (1) {
     editorRefreshScreen();
